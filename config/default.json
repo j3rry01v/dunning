@@ -1,6 +1,6 @@
 {
   "timezone": "Asia/Kolkata",
-  "defaultCronSchedule": "0 10 * * *",
+  "defaultCronSchedule": "0 9 * * *",
   "alertPhone": null,
   "controlPanel": {
     "port": 4173,
