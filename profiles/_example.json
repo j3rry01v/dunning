@@ -1,0 +1,12 @@
+{
+  "id": "example",
+  "displayName": "Example",
+  "phone": "<COUNTRYCODE><NUMBER>",
+  "loanAmount": 6000,
+  "loanDateISO": "2026-01-01",
+  "cronSchedule": null,
+  "timezone": null,
+  "messageTemplate": null,
+  "paused": false,
+  "createdAt": "2026-01-01T00:00:00.000Z"
+}

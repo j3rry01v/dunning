@@ -1,0 +1,12 @@
+node_modules/
+.wwebjs_auth/
+.wwebjs_cache/
+logs/*.log
+npm-debug.log*
+.dashboard_token
+
+# Real profiles and personal overrides contain phone numbers/amounts —
+# never commit them. Only the placeholder template is tracked.
+profiles/*.json
+!profiles/_example.json
+config/local.json

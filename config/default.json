@@ -1,0 +1,9 @@
+{
+  "timezone": "Asia/Kolkata",
+  "defaultCronSchedule": "0 10 * * *",
+  "alertPhone": null,
+  "controlPanel": {
+    "port": 4173,
+    "host": "127.0.0.1"
+  }
+}
