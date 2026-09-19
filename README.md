@@ -1,4 +1,4 @@
-# debt-reminder
+# dunning
 
 A small self-hosted service that sends a daily WhatsApp reminder message to one or more people, calculating "days since loan" and "amount that should have been saved per day" fresh on every send.
 
@@ -53,7 +53,7 @@ Profile fields:
 
 ### Editing profiles by hand
 
-Edit the JSON file directly (change amounts, pause it, etc.), then either restart the process (`pm2 restart debt-reminder`) or send `/reload` in your own WhatsApp chat to pick up the change without a restart.
+Edit the JSON file directly (change amounts, pause it, etc.), then either restart the process (`pm2 restart dunning`) or send `/reload` in your own WhatsApp chat to pick up the change without a restart.
 
 ### The message template
 
@@ -119,7 +119,7 @@ If a scheduled send fails (`status: "error"`), the bot sends you a WhatsApp mess
 ```json
 {
   "timezone": "Asia/Kolkata",
-  "defaultCronSchedule": "0 10 * * *",
+  "defaultCronSchedule": "0 9 * * *",
   "alertPhone": null,
   "controlPanel": { "port": 4173, "host": "127.0.0.1" }
 }
@@ -202,9 +202,9 @@ Useful PM2 commands afterwards:
 
 ```bash
 pm2 status              # is it running?
-pm2 logs debt-reminder  # tail stdout/stderr
-pm2 restart debt-reminder
-pm2 stop debt-reminder
+pm2 logs dunning  # tail stdout/stderr
+pm2 restart dunning
+pm2 stop dunning
 ```
 
 To check on it visually instead of the terminal, use the control panel over an SSH tunnel (see [Controlling it](#controlling-it) above).
@@ -223,6 +223,12 @@ find logs -mtime +90 -delete
 - **Session invalidated** (phone unlinked the device, or WhatsApp logged it out remotely): delete `.wwebjs_auth/` and repeat the interactive first-run login.
 - **Startup fails with `Could not load response body for this request`:** this is a known flaky issue in `whatsapp-web.js` against current Chrome/Puppeteer builds — it's unrelated to your setup. The process automatically retries a fresh browser up to 5 times with backoff before giving up; under PM2 it'll keep retrying across restarts. If you ever try to "fix" this by pinning a specific WhatsApp Web version, be aware that can get your session logged out server-side — don't do that; just let the retry logic handle it.
 - **Missing Chromium shared library on Ubuntu:** see step 3 of Deployment.
+- **`Could not find Chrome` / a downloaded Chrome folder exists but the executable inside it doesn't (on an ARM64 server):** Google's Chrome for Testing (what Puppeteer downloads by default) has no Linux ARM64 build — this isn't fixable by re-running the install, it genuinely doesn't exist for this architecture. Instead, use the system's own Chromium:
+  ```bash
+  sudo apt-get install -y chromium
+  which chromium   # confirm it installed a real binary, not a snap stub
+  ```
+  Then set `PUPPETEER_EXECUTABLE_PATH` to that path before running — either `export PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium` for an interactive `node index.js` run, or add it to the `env` block in `ecosystem.config.js` for PM2 (there's a commented example there already). Leave it unset entirely on normal x86_64 servers — Puppeteer's default download works fine there.
 - **No QR code visible under PM2:** the first login must be done with `node index.js` run directly in a terminal, not under PM2.
 - **Self-chat commands not triggering:** check the dashboard's event feed (or `logs/*.log`) for `message_seen` entries — they show exactly what WhatsApp delivered for every message, matched or not, which is the fastest way to see why a command didn't fire.
 

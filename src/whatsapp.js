@@ -9,7 +9,13 @@ function createClient() {
     authStrategy: new LocalAuth({ dataPath: '.wwebjs_auth' }),
     puppeteer: {
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      // Puppeteer's own bundled "Chrome for Testing" has no Linux ARM64
+      // build. On ARM servers, install a system Chromium (e.g.
+      // `sudo apt-get install chromium`) and point this at it via
+      // PUPPETEER_EXECUTABLE_PATH — left unset, Puppeteer's default
+      // (downloaded) browser resolution is unaffected.
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
     }
   });
 
