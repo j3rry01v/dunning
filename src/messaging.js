@@ -2,15 +2,15 @@ function startOfDay(date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
-function daysElapsed(loanDateISO, now = new Date()) {
-  const loanDate = new Date(`${loanDateISO}T00:00:00`);
-  const diffMs = startOfDay(now) - startOfDay(loanDate);
+function daysElapsed(debtDateISO, now = new Date()) {
+  const debtDate = new Date(`${debtDateISO}T00:00:00`);
+  const diffMs = startOfDay(now) - startOfDay(debtDate);
   return Math.floor(diffMs / 86400000);
 }
 
-function dailyAmount(loanAmount, days) {
+function dailyAmount(debtAmount, days) {
   if (days <= 0) return null;
-  return (loanAmount / days).toFixed(2);
+  return (debtAmount / days).toFixed(2);
 }
 
 function renderTemplate(template, vars) {
@@ -18,11 +18,11 @@ function renderTemplate(template, vars) {
 }
 
 function buildMessage(profile, template) {
-  const days = daysElapsed(profile.loanDateISO);
+  const days = daysElapsed(profile.debtDateISO);
   if (days <= 0) {
     return { skip: true, reason: 'future-date', days };
   }
-  const amount = dailyAmount(profile.loanAmount, days);
+  const amount = dailyAmount(profile.debtAmount, days);
   const text = renderTemplate(template, { days, amount });
   return { skip: false, days, amount, text };
 }

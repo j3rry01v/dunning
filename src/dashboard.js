@@ -50,8 +50,8 @@ function buildStatus(globalConfig) {
       displayName: p.displayName,
       phone: p.phone,
       paused: p.paused,
-      loanAmount: p.loanAmount,
-      loanDateISO: p.loanDateISO,
+      debtAmount: p.debtAmount,
+      debtDateISO: p.debtDateISO,
       cronSchedule: profiles.resolveEffective(p, globalConfig).cronSchedule,
       timezone: profiles.resolveEffective(p, globalConfig).timezone
     })),

@@ -70,10 +70,6 @@ function toChatId(phone) {
   return `${phone}@c.us`;
 }
 
-function selfChatId(client) {
-  return client.info.wid._serialized;
-}
-
 function getIsReady() {
   return isReady;
 }
@@ -108,22 +104,9 @@ async function sendToProfile(client, profile, text) {
   await sendWithRetry(client, toChatId(profile.phone), text);
 }
 
-async function sendSelf(client, text) {
-  if (!isReady) throw new Error('client not ready');
-  await sendWithRetry(client, selfChatId(client), text);
-}
-
-async function sendToChat(client, chatId, text) {
-  if (!isReady) throw new Error('client not ready');
-  await sendWithRetry(client, chatId, text);
-}
-
 module.exports = {
   createClient,
   toChatId,
-  selfChatId,
   getIsReady,
-  sendToProfile,
-  sendSelf,
-  sendToChat
+  sendToProfile
 };

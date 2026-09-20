@@ -1,6 +1,5 @@
 const whatsapp = require('./src/whatsapp');
 const scheduler = require('./src/scheduler');
-const commands = require('./src/commands');
 const dashboard = require('./src/dashboard');
 const alerts = require('./src/alerts');
 const logger = require('./src/logger');
@@ -36,9 +35,8 @@ async function attemptStartup(attempt) {
   return new Promise((resolve, reject) => {
     client.on('ready', () => {
       scheduler.init(client);
-      commands.registerListener(client);
       dashboard.start(client);
-      console.log('dunning ready: profiles scheduled, admin commands listening on self-chat.');
+      console.log('dunning ready: profiles scheduled, control panel started.');
       resolve();
     });
 

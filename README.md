@@ -1,6 +1,6 @@
 # dunning
 
-A small self-hosted service that sends a daily WhatsApp reminder message to one or more people, calculating "days since loan" and "amount that should have been saved per day" fresh on every send.
+A small self-hosted service that sends a daily WhatsApp reminder message to one or more people, calculating "days since debt" and "amount that should have been saved per day" fresh on every send.
 
 Built with [`whatsapp-web.js`](https://wwebjs.dev/) (unofficial WhatsApp Web automation), `node-cron`, and PM2. Runs as a single Node.js process — no database, no Docker, no external server required.
 
@@ -9,7 +9,6 @@ Built with [`whatsapp-web.js`](https://wwebjs.dev/) (unofficial WhatsApp Web aut
 ## Features
 
 - **Multi-profile**: each person you're nagging is a JSON file — add, remove, or tweak them independently.
-- **Self-chat commands**: control it from WhatsApp itself, by messaging your own "Message Yourself" chat.
 - **Local control panel**: a token-protected web dashboard showing live status, per-profile pause/resume, a manual "send now" test button, and a live event feed.
 - **WhatsApp alerts**: if a send fails, you get a WhatsApp message about it.
 - **Self-healing startup**: `whatsapp-web.js` occasionally throws a flaky startup error against current Chrome builds — the process retries automatically instead of silently dying. Sends themselves get a short automatic retry too, for a separate transient race in the same library.
@@ -37,7 +36,7 @@ Press `Ctrl+C` once you see the ready message and the `Control panel: http://...
 
 ## Profiles
 
-Each person you want reminders sent to is a "profile" — a JSON file in `profiles/`. **Real profiles are gitignored** (`profiles/*.json`, except the template below) because they contain phone numbers and loan amounts. Only `profiles/_example.json` is tracked, as a placeholder to copy from.
+Each person you want reminders sent to is a "profile" — a JSON file in `profiles/`. **Real profiles are gitignored** (`profiles/*.json`, except the template below) because they contain phone numbers and debt amounts. Only `profiles/_example.json` is tracked, as a placeholder to copy from.
 
 To create your first real profile:
 
@@ -45,7 +44,7 @@ To create your first real profile:
 cp profiles/_example.json profiles/<yourname>.json
 ```
 
-Then edit it, or create one directly via the `/add` chat command or the control panel.
+Then edit it — real values only need to exist somewhere the code reads from disk; the control panel doesn't create profiles, only manage existing ones (pause/resume/test-send).
 
 Profile fields:
 
@@ -54,26 +53,28 @@ Profile fields:
 | `id` | Slug, must match the filename (`profiles/<id>.json`) |
 | `displayName` | Human-readable name, for your own reference |
 | `phone` | Digits only, country code included, no `+` (e.g. `<COUNTRYCODE><NUMBER>`) |
-| `loanAmount` | Total amount owed |
-| `loanDateISO` | Loan start date, `YYYY-MM-DD` |
+| `debtAmount` | Total amount owed |
+| `debtDateISO` | Debt start date, `YYYY-MM-DD` |
 | `cronSchedule` | Cron string, or `null` to use the global default (`config/default.json`) |
 | `timezone` | IANA timezone, or `null` to use the global default |
 | `messageTemplate` | Message text with `{days}`/`{amount}` placeholders, or `null` to use the global default template (`config/message.template.txt`) |
 | `paused` | If `true`, the daily job is skipped (and logged as `skipped-paused`) |
 
-### Editing profiles by hand
+### Editing profiles
 
-Edit the JSON file directly (change amounts, pause it, etc.), then either restart the process (`pm2 restart dunning`) or send `/reload` in your own WhatsApp chat to pick up the change without a restart.
+Edit the JSON file directly (add a new profile, change amounts, change the schedule, pause it), then restart the process to pick up the change:
+
+```bash
+pm2 restart dunning
+```
+
+Amount/date/template edits on a profile that's already scheduled also take effect on their own at the next scheduled send, since the job re-reads the profile from disk each time it fires — a restart is only strictly needed for a brand-new profile file or a changed `cronSchedule`/`timezone`.
 
 ### The message template
 
-The default message lives in `config/message.template.txt` — a plain text file, not JSON, so you can edit multi-line text (with `{days}`/`{amount}` placeholders) without worrying about escaping newlines. It ships with the original Malayalam template; edit it directly to change the wording for everyone, or set a profile's own `messageTemplate` field to override it for just that person. After editing, send `/reload` (or restart) to pick up the change.
+The default message lives in `config/message.template.txt` — a plain text file, not JSON, so you can edit multi-line text (with `{days}`/`{amount}` placeholders) without worrying about escaping newlines. It ships with the original Malayalam template; edit it directly to change the wording for everyone, or set a profile's own `messageTemplate` field to override it for just that person. Restart to pick up the change.
 
-## Controlling it
-
-There are two ways to control the bot day-to-day. Both work concurrently.
-
-### 1. The control panel (recommended)
+## Control panel
 
 When the bot is ready, it prints a URL like:
 
@@ -85,7 +86,7 @@ Open that URL in a browser on the same machine (or over an SSH tunnel — see be
 
 - Whether WhatsApp is currently connected
 - Every profile, with **Pause**/**Resume** and **Send now (test)** buttons (the test button sends a real message immediately, useful for verifying things work without waiting for the schedule)
-- A live feed of everything that's happened today (sends, errors, lifecycle events, commands)
+- A live feed of everything that's happened today (sends, errors, lifecycle events)
 
 The page auto-refreshes every 5 seconds. It's protected by a random token (stored in `.dashboard_token`, gitignored) baked into the URL — don't share that link.
 
@@ -96,39 +97,6 @@ ssh -L 4173:127.0.0.1:4173 user@your-server
 ```
 
 Then open `http://127.0.0.1:4173/?token=...` locally. The port/host are configurable in `config/default.json` under `controlPanel` if you need something different.
-
-### 2. WhatsApp self-chat commands
-
-Since the bot is logged in as your own WhatsApp account, you can also control it by messaging **yourself** — open the "Message Yourself" chat (search your own name/number in WhatsApp) and send commands there. Only messages in that self-chat are ever treated as commands; messages from/to any other chat (including a debtor's own number) are ignored.
-
-| Command | Effect |
-|---|---|
-| `/help` | List commands |
-| `/list` | Show all profiles with paused/active state and today's computed day/amount |
-| `/status <id>` | Full detail for one profile |
-| `/pause <id>` / `/resume <id>` | Stop/restart sending for one profile |
-| `/setamount <id> <amount>` | Change the loan amount |
-| `/setdate <id> <YYYY-MM-DD>` | Change the loan start date |
-| `/add <id> <phone> <amount> <YYYY-MM-DD>` | Create a new profile (inherits the global schedule/template) |
-| `/remove <id> confirm` | Delete a profile (the `confirm` token is required to avoid accidental deletes) |
-| `/reload` | Re-read all profiles and `config/default.json` from disk |
-| `/send <id>` | Send that profile's message right now, outside the schedule |
-
-Message templates aren't editable via chat — multi-line Malayalam text with `{placeholders}` is fiddly to type correctly in a single WhatsApp message. Edit the template in the profile's JSON (or `config/default.json` for the shared default) and send `/reload`.
-
-If self-chat commands ever seem to stop working, every incoming message is logged as a `message_seen` event (visible in the dashboard's event feed or `logs/*.log`) whether or not it matched — that log line shows exactly what WhatsApp delivered, plus `matchedSelfChat`/`matchedAdminPhone` flags and the account identities the bot knows itself by. That's the place to look first.
-
-### 3. Commands from a second phone (optional)
-
-Self-chat depends on WhatsApp's own account addressing, which it has been changing (see the `@lid` note in [Troubleshooting](#troubleshooting)). If you'd rather not depend on that, set `adminPhone` in `config/local.json` to a second number you own:
-
-```json
-{
-  "adminPhone": "<COUNTRYCODE><NUMBER>"
-}
-```
-
-Messages from that number are then accepted as commands (same command set), with replies sent back to it. Because it's an ordinary incoming message rather than a self-message, it works regardless of how WhatsApp addresses your own account. Only that exact number is accepted; anyone else messaging the bot is ignored, as always. Leave it `null` to disable this channel entirely.
 
 ## Alerts
 
@@ -149,12 +117,11 @@ If a scheduled send fails (`status: "error"`), the bot sends you a WhatsApp mess
 
 - `timezone` / `defaultCronSchedule` — fallback values used by any profile that leaves those fields `null`. The fallback message template lives separately in `config/message.template.txt`.
 - `alertPhone` — where send-failure alerts go. Left `null` here since it's personal; set the real number in `config/local.json` instead (see below).
-- `adminPhone` — optional second number allowed to send commands (see [Commands from a second phone](#3-commands-from-a-second-phone-optional)). Also personal, so it belongs in `config/local.json`.
 - `controlPanel` — host/port the dashboard listens on.
 
 ### Personal overrides: `config/local.json`
 
-`config/local.json` is **gitignored**. If it exists, its keys are merged on top of `config/default.json` at load time — this is where your real `alertPhone` (or any other override) goes, so it never ends up committed:
+`config/local.json` is **gitignored**. If it exists, its keys are merged on top of `config/default.json` at load time — this is where your real `alertPhone` goes, so it never ends up committed:
 
 ```json
 {
@@ -199,12 +166,12 @@ Useful PM2 commands afterwards:
 
 ```bash
 pm2 status              # is it running?
-pm2 logs dunning  # tail stdout/stderr
+pm2 logs dunning         # tail stdout/stderr
 pm2 restart dunning
 pm2 stop dunning
 ```
 
-To check on it visually instead of the terminal, use the control panel over an SSH tunnel (see [Controlling it](#controlling-it) above).
+To check on it visually instead of the terminal, use the control panel over an SSH tunnel (see [Control panel](#control-panel) above).
 
 ## Manual setup
 
@@ -232,7 +199,7 @@ None of this scans the QR or starts PM2 — those stay manual/interactive steps 
 
 ## Logs
 
-`logs/YYYY-MM-DD.log` — one JSON object per line, covering daily send attempts (`sent`, `error`, `skipped-paused`, `skipped-future-date`, `skipped-not-ready`), client lifecycle events, every message the bot has seen (for debugging self-chat detection), and an audit trail of admin commands. Plain text, not rotated automatically; delete old ones periodically if desired:
+`logs/YYYY-MM-DD.log` — one JSON object per line, covering daily send attempts (`sent`, `error`, `skipped-paused`, `skipped-future-date`, `skipped-not-ready`) and client lifecycle events. Plain text, not rotated automatically; delete old ones periodically if desired:
 
 ```bash
 find logs -mtime +90 -delete
@@ -255,10 +222,7 @@ find logs -mtime +90 -delete
   rm -rf ~/.cache/puppeteer/chrome*/<version-it-names>
   npm install
   ```
-- **Self-chat commands not triggering:** check the dashboard's event feed (or `logs/*.log`) for `message_seen` entries — they show exactly what WhatsApp delivered for every message, matched or not, plus `matchedSelfChat`/`matchedAdminPhone`. Two things to look for:
-  - **No `message_seen` entry at all** for a command you just sent → WhatsApp isn't delivering that message to the client as an event, so no matching logic can help. Use the [admin phone channel](#3-commands-from-a-second-phone-optional) or the control panel instead.
-  - **An entry with `matchedSelfChat: false`** → an id mismatch. WhatsApp is migrating accounts from the classic `<number>@c.us` addressing to an opaque `<id>@lid` ("linked id") form, and `client.info` only ever reports the `@c.us` one. A self-chat can even be *mixed* — `from` in `@c.us` form and `to` in `@lid` form for the same message. This is handled: every message reveals one of your identities (`from` on messages you sent, `to` on ones you received), those are collected into `knownSelfIds` and persisted to `.self_ids.json` so they survive restarts, and a self-chat is matched when both sides are known to be you. If it ever regresses, the `knownSelfIds` field in that log entry is what to check — an `@lid` identity missing from it is the tell.
 
 ## Out of scope (for now)
 
-No database, no Docker, no external dashboard framework, no Telegram integration — these remain possible future additions but aren't part of this build.
+No database, no Docker, no external dashboard framework, no Telegram integration, no WhatsApp chat-based commands — control is via the web dashboard only. These remain possible future additions but aren't part of this build.

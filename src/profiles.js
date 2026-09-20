@@ -61,30 +61,6 @@ function saveProfile(profile) {
   return profile;
 }
 
-function deleteProfile(id) {
-  const file = profilePath(id);
-  if (fs.existsSync(file)) fs.unlinkSync(file);
-}
-
-function createProfile({ id, phone, loanAmount, loanDateISO, displayName }) {
-  if (getById(id)) {
-    throw new Error(`profile "${id}" already exists`);
-  }
-  const profile = {
-    id,
-    displayName: displayName || id,
-    phone,
-    loanAmount,
-    loanDateISO,
-    cronSchedule: null,
-    timezone: null,
-    messageTemplate: null,
-    paused: false,
-    createdAt: new Date().toISOString()
-  };
-  return saveProfile(profile);
-}
-
 function resolveEffective(profile, globalConfig) {
   return {
     cronSchedule: profile.cronSchedule || globalConfig.defaultCronSchedule,
@@ -98,7 +74,5 @@ module.exports = {
   loadAll,
   getById,
   saveProfile,
-  deleteProfile,
-  createProfile,
   resolveEffective
 };

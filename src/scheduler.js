@@ -70,16 +70,6 @@ function rescheduleProfile(id) {
   if (profile) registerProfile(profile);
 }
 
-function reloadAll() {
-  for (const id of taskMap.keys()) {
-    unregisterProfile(id);
-  }
-  const all = profiles.loadAll();
-  for (const profile of all) {
-    registerProfile(profile);
-  }
-}
-
 function init(client) {
   clientRef = client;
   const all = profiles.loadAll();
@@ -90,9 +80,6 @@ function init(client) {
 
 module.exports = {
   init,
-  registerProfile,
-  unregisterProfile,
   rescheduleProfile,
-  reloadAll,
   runProfileJob
 };
