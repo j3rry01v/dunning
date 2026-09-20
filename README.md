@@ -116,7 +116,19 @@ Since the bot is logged in as your own WhatsApp account, you can also control it
 
 Message templates aren't editable via chat — multi-line Malayalam text with `{placeholders}` is fiddly to type correctly in a single WhatsApp message. Edit the template in the profile's JSON (or `config/default.json` for the shared default) and send `/reload`.
 
-If self-chat commands ever seem to stop working, every incoming message is logged as a `message_seen` event (visible in the dashboard's event feed or `logs/*.log`) whether or not it matched — that log line shows exactly what WhatsApp delivered, which is the place to look first.
+If self-chat commands ever seem to stop working, every incoming message is logged as a `message_seen` event (visible in the dashboard's event feed or `logs/*.log`) whether or not it matched — that log line shows exactly what WhatsApp delivered, plus `matchedSelfChat`/`matchedAdminPhone` flags and the account identities the bot knows itself by. That's the place to look first.
+
+### 3. Commands from a second phone (optional)
+
+Self-chat depends on WhatsApp's own account addressing, which it has been changing (see the `@lid` note in [Troubleshooting](#troubleshooting)). If you'd rather not depend on that, set `adminPhone` in `config/local.json` to a second number you own:
+
+```json
+{
+  "adminPhone": "<COUNTRYCODE><NUMBER>"
+}
+```
+
+Messages from that number are then accepted as commands (same command set), with replies sent back to it. Because it's an ordinary incoming message rather than a self-message, it works regardless of how WhatsApp addresses your own account. Only that exact number is accepted; anyone else messaging the bot is ignored, as always. Leave it `null` to disable this channel entirely.
 
 ## Alerts
 
@@ -137,6 +149,7 @@ If a scheduled send fails (`status: "error"`), the bot sends you a WhatsApp mess
 
 - `timezone` / `defaultCronSchedule` — fallback values used by any profile that leaves those fields `null`. The fallback message template lives separately in `config/message.template.txt`.
 - `alertPhone` — where send-failure alerts go. Left `null` here since it's personal; set the real number in `config/local.json` instead (see below).
+- `adminPhone` — optional second number allowed to send commands (see [Commands from a second phone](#3-commands-from-a-second-phone-optional)). Also personal, so it belongs in `config/local.json`.
 - `controlPanel` — host/port the dashboard listens on.
 
 ### Personal overrides: `config/local.json`
@@ -150,23 +163,6 @@ If a scheduled send fails (`status: "error"`), the bot sends you a WhatsApp mess
 ```
 
 This file is optional; without it, alerts are simply skipped (no crash).
-
-## What's gitignored (and why)
-
-Nothing containing a real phone number, amount, or secret is meant to be committed:
-
-| Path | Contains | Tracked? |
-|---|---|---|
-| `profiles/_example.json` | Placeholder values only | Yes |
-| `profiles/*.json` (anything else) | Real phone numbers, amounts | No |
-| `config/default.json` | Generic defaults only | Yes |
-| `config/local.json` | Your real `alertPhone`, etc. | No |
-| `config/message.template.txt` | Message wording (no personal data) | Yes |
-| `.wwebjs_auth/` | WhatsApp session credentials | No |
-| `.dashboard_token` | Control panel access token | No |
-| `logs/*.log` | Send history, message previews | No |
-
-If you're setting this up fresh, copy `profiles/_example.json` to a real profile and, if you want alerts, create `config/local.json` — both stay local to your machine/server.
 
 ## Deployment: headless server, running permanently in the background
 
@@ -259,7 +255,9 @@ find logs -mtime +90 -delete
   rm -rf ~/.cache/puppeteer/chrome*/<version-it-names>
   npm install
   ```
-- **Self-chat commands not triggering:** check the dashboard's event feed (or `logs/*.log`) for `message_seen` entries — they show exactly what WhatsApp delivered for every message, matched or not, which is the fastest way to see why a command didn't fire.
+- **Self-chat commands not triggering:** check the dashboard's event feed (or `logs/*.log`) for `message_seen` entries — they show exactly what WhatsApp delivered for every message, matched or not, plus `matchedSelfChat`/`matchedAdminPhone`. Two things to look for:
+  - **No `message_seen` entry at all** for a command you just sent → WhatsApp isn't delivering that message to the client as an event, so no matching logic can help. Use the [admin phone channel](#3-commands-from-a-second-phone-optional) or the control panel instead.
+  - **An entry with `matchedSelfChat: false`** → an id mismatch. WhatsApp is migrating accounts from the classic `<number>@c.us` addressing to an opaque `<id>@lid` ("linked id") form, and `client.info` only ever reports the `@c.us` one — so a self-chat keyed by `@lid` won't match a naive comparison. This is handled now (self-chat is detected by sender and recipient being the *same entity*, whichever format is used, and the account's `@lid` identity is learned from incoming messages), but the `knownSelfIds` field in that log entry is what to check if it ever regresses.
 
 ## Out of scope (for now)
 

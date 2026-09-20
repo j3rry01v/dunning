@@ -113,4 +113,17 @@ async function sendSelf(client, text) {
   await sendWithRetry(client, selfChatId(client), text);
 }
 
-module.exports = { createClient, toChatId, selfChatId, getIsReady, sendToProfile, sendSelf };
+async function sendToChat(client, chatId, text) {
+  if (!isReady) throw new Error('client not ready');
+  await sendWithRetry(client, chatId, text);
+}
+
+module.exports = {
+  createClient,
+  toChatId,
+  selfChatId,
+  getIsReady,
+  sendToProfile,
+  sendSelf,
+  sendToChat
+};

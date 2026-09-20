@@ -21,20 +21,58 @@ const HELP_TEXT = [
 
 // WhatsApp ids sometimes carry a ":<device>" suffix (e.g. "9198765@c.us" vs
 // "9198765:12@c.us") depending on which linked device sent/received the
-// message. Strip it before comparing so self-chat detection isn't fooled by
-// device-id noise.
+// message. Strip it before comparing so id matching isn't fooled by that.
 function normalizeId(id) {
   if (!id) return id;
   return id.replace(/:\d+@/, '@');
 }
 
+// An account can be addressed two ways: the classic "<number>@c.us" and
+// WhatsApp's newer "<opaque>@lid" (linked id). client.info only ever exposes
+// the @c.us one, so comparing against it alone misses self-chat messages on
+// accounts WhatsApp has moved to @lid addressing. We collect both here.
+const selfIds = new Set();
+
+function rememberSelfId(id) {
+  const normalized = normalizeId(id);
+  if (!normalized || normalized.endsWith('@g.us') || normalized === 'status@broadcast') return;
+  selfIds.add(normalized);
+}
+
+// On any message someone else sent us, `to` is our own id (per whatsapp-web.js's
+// Message docs) — which is how we discover the account's @lid identity.
+function learnSelfIdFromIncoming(msg) {
+  if (msg.fromMe) return;
+  rememberSelfId(msg.to);
+}
+
 function isSelfChatCommand(client, msg) {
-  const myId = client.info && client.info.wid && client.info.wid._serialized;
-  if (!myId) return false;
+  if (!msg.fromMe) return false;
+
   const from = normalizeId(msg.from);
   const to = normalizeId(msg.to);
-  const me = normalizeId(myId);
-  return Boolean(msg.fromMe) && from === me && to === me;
+  if (!from || !to) return false;
+
+  // Sender and recipient being the same entity *is* the definition of the
+  // "Message Yourself" chat — and comparing them to each other rather than to
+  // a known id works whichever addressing format WhatsApp picked for it.
+  if (from === to) return true;
+
+  // Mixed formats (e.g. sent as @c.us, chat keyed by @lid): fall back to
+  // checking both sides against every identity we know this account by.
+  const myId = client.info && client.info.wid && client.info.wid._serialized;
+  if (myId) rememberSelfId(myId);
+  return selfIds.has(from) && selfIds.has(to);
+}
+
+// Optional second control channel: commands sent from a configured admin
+// number. Unlike self-chat, this is an ordinary incoming message, so it works
+// regardless of how WhatsApp addresses your own account.
+function isAdminPhoneCommand(msg, globalConfig) {
+  if (msg.fromMe) return false;
+  const adminPhone = globalConfig.adminPhone;
+  if (!adminPhone) return false;
+  return normalizeId(msg.from) === `${adminPhone}@c.us`;
 }
 
 function previewLine(profile, globalConfig) {
@@ -165,8 +203,11 @@ async function handleSend(args) {
   }
 }
 
-async function handle(client, msg) {
+async function handle(client, msg, replyToChatId) {
   const body = msg.body.trim();
+  // Load-bearing: the bot's own replies land back here as self-chat messages,
+  // so this "/" check is what stops a reply-to-a-reply loop. No reply text may
+  // ever start with "/".
   if (!body.startsWith('/')) return;
 
   const [rawCommand, ...args] = body.split(/\s+/);
@@ -213,30 +254,50 @@ async function handle(client, msg) {
   }
 
   logger.logCommand({ command, args, result: reply });
-  await whatsapp.sendSelf(client, reply);
+  await whatsapp.sendToChat(client, replyToChatId, reply);
 }
 
 function registerListener(client) {
+  const myId = client.info && client.info.wid && client.info.wid._serialized;
+  if (myId) rememberSelfId(myId);
+  logger.logEvent('self_identity', { wid: myId, knownSelfIds: [...selfIds] });
+
   client.on('message_create', (msg) => {
-    const myId = client.info && client.info.wid && client.info.wid._serialized;
-    const matched = isSelfChatCommand(client, msg);
+    learnSelfIdFromIncoming(msg);
+
+    // Cheap checks first: status broadcasts and group chatter arrive in
+    // bursts, and there's no reason to hit the config files for those.
+    const looksLikeCommand = typeof msg.body === 'string' && msg.body.trim().startsWith('/');
+    const matchedSelfChat = isSelfChatCommand(client, msg);
+    const matchedAdminPhone =
+      !matchedSelfChat &&
+      looksLikeCommand &&
+      isAdminPhoneCommand(msg, profiles.loadGlobalConfig());
 
     // Always log what we saw — this is the trail to look at if commands
     // stop being recognized (e.g. WhatsApp changing id formats).
     logger.logEvent('message_seen', {
       myId,
+      knownSelfIds: [...selfIds],
       from: msg.from,
       to: msg.to,
       fromMe: msg.fromMe,
       body: msg.body,
-      matchedSelfChat: matched
+      matchedSelfChat,
+      matchedAdminPhone
     });
 
-    if (!matched) return;
-    handle(client, msg).catch((err) => {
+    if (!matchedSelfChat && !matchedAdminPhone) return;
+
+    // Same destination logic whatsapp-web.js's own Message.reply() uses: for
+    // a message we sent (self-chat) the chat is `to`, for one we received
+    // (admin phone) it's `from`. Left in WhatsApp's own id format rather than
+    // normalized, since that's what's guaranteed to resolve to a real chat.
+    const replyToChatId = msg.fromMe ? msg.to : msg.from;
+    handle(client, msg, replyToChatId).catch((err) => {
       logger.logEvent('command_error', { error: err.message });
     });
   });
 }
 
-module.exports = { registerListener, isSelfChatCommand };
+module.exports = { registerListener, isSelfChatCommand, isAdminPhoneCommand };
