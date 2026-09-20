@@ -4,6 +4,7 @@ node_modules/
 logs/*.log
 npm-debug.log*
 .dashboard_token
+.self_ids.json
 
 # Real profiles and personal overrides contain phone numbers/amounts —
 # never commit them. Only the placeholder template is tracked.

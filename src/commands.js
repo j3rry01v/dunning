@@ -1,8 +1,13 @@
+const fs = require('fs');
+const path = require('path');
+
 const profiles = require('./profiles');
 const scheduler = require('./scheduler');
 const messaging = require('./messaging');
 const whatsapp = require('./whatsapp');
 const logger = require('./logger');
+
+const SELF_IDS_PATH = path.join(__dirname, '..', '.self_ids.json');
 
 const HELP_TEXT = [
   'Commands:',
@@ -33,17 +38,37 @@ function normalizeId(id) {
 // accounts WhatsApp has moved to @lid addressing. We collect both here.
 const selfIds = new Set();
 
+function loadPersistedSelfIds() {
+  try {
+    for (const id of JSON.parse(fs.readFileSync(SELF_IDS_PATH, 'utf8'))) selfIds.add(id);
+  } catch {
+    // First run, or the file was removed — it gets rebuilt from observed traffic.
+  }
+}
+
 function rememberSelfId(id) {
   const normalized = normalizeId(id);
   if (!normalized || normalized.endsWith('@g.us') || normalized === 'status@broadcast') return;
+  if (selfIds.has(normalized)) return;
+
   selfIds.add(normalized);
+  // Persisted so a restart doesn't go back to knowing only the @c.us form —
+  // otherwise self-chat breaks again until traffic happens to re-reveal it.
+  try {
+    fs.writeFileSync(SELF_IDS_PATH, JSON.stringify([...selfIds], null, 2));
+  } catch (err) {
+    logger.logEvent('self_ids_persist_failed', { error: err.message });
+  }
+  logger.logEvent('self_identity_learned', { id: normalized, knownSelfIds: [...selfIds] });
 }
 
-// On any message someone else sent us, `to` is our own id (per whatsapp-web.js's
-// Message docs) — which is how we discover the account's @lid identity.
-function learnSelfIdFromIncoming(msg) {
-  if (msg.fromMe) return;
-  rememberSelfId(msg.to);
+// Every message reveals one of our own identities, in whichever format
+// WhatsApp used for it: on a message we sent, `from` is us; on one we
+// received, `to` is us (per whatsapp-web.js's Message docs). Collecting both
+// is how the account's @lid identity gets discovered — client.info only ever
+// reports the @c.us one.
+function learnSelfIds(msg) {
+  rememberSelfId(msg.fromMe ? msg.from : msg.to);
 }
 
 function isSelfChatCommand(client, msg) {
@@ -258,12 +283,13 @@ async function handle(client, msg, replyToChatId) {
 }
 
 function registerListener(client) {
+  loadPersistedSelfIds();
   const myId = client.info && client.info.wid && client.info.wid._serialized;
   if (myId) rememberSelfId(myId);
   logger.logEvent('self_identity', { wid: myId, knownSelfIds: [...selfIds] });
 
   client.on('message_create', (msg) => {
-    learnSelfIdFromIncoming(msg);
+    learnSelfIds(msg);
 
     // Cheap checks first: status broadcasts and group chatter arrive in
     // bursts, and there's no reason to hit the config files for those.
