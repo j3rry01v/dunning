@@ -10,10 +10,10 @@ module.exports = {
       max_memory_restart: '300M',
       env: {
         NODE_ENV: 'production'
-        // On ARM64 servers, Puppeteer's bundled Chrome has no Linux ARM64
-        // build. Install a system Chromium (`sudo apt-get install chromium`)
-        // and point at it here, e.g.:
-        // PUPPETEER_EXECUTABLE_PATH: '/usr/bin/chromium'
+        // On Linux ARM64, a system Chromium at a standard path (e.g.
+        // /snap/bin/chromium) is auto-detected — no config needed. Only set
+        // PUPPETEER_EXECUTABLE_PATH here if yours lives somewhere unusual:
+        // PUPPETEER_EXECUTABLE_PATH: '/path/to/chromium'
       }
     }
   ]

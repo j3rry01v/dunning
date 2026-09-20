@@ -1,21 +1,47 @@
+const fs = require('fs');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const logger = require('./logger');
 
 let isReady = false;
 
+// Puppeteer's bundled "Chrome for Testing" has no Linux ARM64 build — on an
+// ARM server (Raspberry Pi, AWS Graviton, Oracle Ampere, etc.) the download
+// silently produces a broken install (folder exists, executable doesn't).
+// A system Chromium is the standard fix there; these are the paths it's
+// commonly installed at (snap is what `sudo snap install chromium` gives
+// you, which is the norm on Ubuntu 22.04+). PUPPETEER_EXECUTABLE_PATH
+// always wins if set, so this only kicks in as a same-architecture default.
+const KNOWN_ARM_CHROMIUM_PATHS = ['/snap/bin/chromium', '/usr/bin/chromium', '/usr/bin/chromium-browser'];
+
+function resolveExecutablePath() {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+  if (process.platform === 'linux' && process.arch === 'arm64') {
+    return KNOWN_ARM_CHROMIUM_PATHS.find((candidate) => fs.existsSync(candidate));
+  }
+  return undefined;
+}
+
 function createClient() {
+  const executablePath = resolveExecutablePath();
+  if (process.platform === 'linux' && process.arch === 'arm64' && !executablePath) {
+    console.warn(
+      'Running on Linux ARM64 but no system Chromium was found at ' +
+        `${KNOWN_ARM_CHROMIUM_PATHS.join(', ')}. Puppeteer's bundled Chrome ` +
+        'does not support this architecture and startup will likely fail — ' +
+        'run `sudo snap install chromium` (see README Troubleshooting) or set ' +
+        'PUPPETEER_EXECUTABLE_PATH to a Chromium binary yourself.'
+    );
+  }
+
   const client = new Client({
     authStrategy: new LocalAuth({ dataPath: '.wwebjs_auth' }),
     puppeteer: {
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      // Puppeteer's own bundled "Chrome for Testing" has no Linux ARM64
-      // build. On ARM servers, install a system Chromium (e.g.
-      // `sudo apt-get install chromium`) and point this at it via
-      // PUPPETEER_EXECUTABLE_PATH — left unset, Puppeteer's default
-      // (downloaded) browser resolution is unaffected.
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+      executablePath
     }
   });
 

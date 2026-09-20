@@ -70,7 +70,7 @@ function pageHtml(token) {
 <html>
 <head>
 <meta charset="utf-8">
-<title>debt-reminder control panel</title>
+<title>dunning control panel</title>
 <style>
   body { font-family: -apple-system, system-ui, sans-serif; background: #0b0f14; color: #e6edf3; margin: 0; padding: 24px; }
   h1 { font-size: 18px; margin-bottom: 4px; }
@@ -93,7 +93,7 @@ function pageHtml(token) {
 </style>
 </head>
 <body>
-<h1>debt-reminder control panel</h1>
+<h1>dunning control panel</h1>
 <div class="sub">Auto-refreshes every 5s. Localhost only.</div>
 <div id="status"></div>
 <h3>Profiles</h3>

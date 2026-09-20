@@ -12,16 +12,26 @@ Built with [`whatsapp-web.js`](https://wwebjs.dev/) (unofficial WhatsApp Web aut
 - **Self-chat commands**: control it from WhatsApp itself, by messaging your own "Message Yourself" chat.
 - **Local control panel**: a token-protected web dashboard showing live status, per-profile pause/resume, a manual "send now" test button, and a live event feed.
 - **WhatsApp alerts**: if a send fails, you get a WhatsApp message about it.
-- **Self-healing startup**: `whatsapp-web.js` occasionally throws a flaky startup error against current Chrome builds — the process retries automatically instead of silently dying.
+- **Self-healing startup**: `whatsapp-web.js` occasionally throws a flaky startup error against current Chrome builds — the process retries automatically instead of silently dying. Sends themselves get a short automatic retry too, for a separate transient race in the same library.
+- **Runs anywhere**: one setup script (`npm run setup`) handles Mac, plain x86_64 Linux, and Linux ARM64 (Raspberry Pi, AWS Graviton, Oracle Ampere) alike — including auto-detecting a system Chromium on ARM, where Puppeteer's bundled one doesn't exist.
 
 ## Setup
 
 ```bash
-npm install
+npm run setup
+```
+
+This bootstraps everything the project actually needs, and is safe to re-run: installs npm dependencies, installs PM2 if it's missing, installs Chromium's runtime shared libraries (Ubuntu/Debian), and — only on Linux ARM64, where Puppeteer's bundled Chrome has no build at all — installs a system Chromium via snap. It also scaffolds `config/local.json` and tells you if you still need to create a profile. Works the same on a Mac for local dev, a plain x86_64 Ubuntu server, or an ARM64 cloud box (Graviton, Ampere, Raspberry Pi).
+
+If you'd rather do it by hand, or `npm run setup` doesn't fit your OS, see [Manual setup](#manual-setup) below — every step it automates is documented there individually.
+
+Once setup finishes, scan the WhatsApp QR (once):
+
+```bash
 node index.js
 ```
 
-On first run, a QR code prints in the terminal. Open WhatsApp on your phone → **Linked Devices** → **Link a Device** → scan it. Once you see `debt-reminder ready: ...` in the console, the session is authenticated and persisted to `.wwebjs_auth/` — you won't need to scan again unless that folder is deleted or the linked device is removed from your phone.
+Open WhatsApp on your phone → **Linked Devices** → **Link a Device** → scan the QR that prints in the terminal. Once you see `dunning ready: ...` in the console, the session is authenticated and persisted to `.wwebjs_auth/` — you won't need to scan again unless that folder is deleted or the linked device is removed from your phone.
 
 Press `Ctrl+C` once you see the ready message and the `Control panel: http://...` line, then move on to [Deployment](#deployment) to run it permanently in the background.
 
@@ -162,27 +172,18 @@ If you're setting this up fresh, copy `profiles/_example.json` to a real profile
 
 No `screen`, no `tmux`, no terminal left open — PM2 daemonizes the process and keeps it running across reboots.
 
-1. **Install Node.js (>=18) and PM2** on the server:
+1. **Install Node.js (>=18)** on the server (e.g. via [nvm](https://github.com/nvm-sh/nvm)).
+2. **Copy the project over** (git clone, `scp -r`, or `rsync`).
+3. **Run the bootstrap script**:
    ```bash
-   npm install -g pm2
+   npm run setup
    ```
-2. **Copy the project over** (git clone, `scp -r`, or `rsync`) and install dependencies:
-   ```bash
-   npm install
-   ```
-3. **Install Chromium's runtime dependencies** — Puppeteer (bundled with `whatsapp-web.js`) needs these even in headless mode:
-   ```bash
-   sudo apt-get update
-   sudo apt-get install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
-     libxcomposite1 libxdamage1 libxrandr2 libgbm1 libasound2 \
-     libpangocairo-1.0-0 fonts-liberation libxss1 libappindicator3-1
-   ```
-   Package names shift slightly between Ubuntu versions (e.g. `libasound2` vs `libasound2t64` on 24.04). If `node index.js` fails with a missing `.so` error, search the exact library name and install it, or run `sudo apt-get install -f`.
+   This installs npm dependencies, PM2, Chromium's shared libraries, and (on ARM64 only) a system Chromium — see [Manual setup](#manual-setup) below if you'd rather do these individually or hit something the script doesn't cover for your distro.
 4. **First run must be interactive**, once, so you can scan the QR (PM2's log capture doesn't render QR codes reliably):
    ```bash
    node index.js
    ```
-   Scan it, wait for the `debt-reminder ready: ...` line, then `Ctrl+C`. This writes the session to `.wwebjs_auth/` — every run after this is unattended.
+   Scan it, wait for the `dunning ready: ...` line, then `Ctrl+C`. This writes the session to `.wwebjs_auth/` — every run after this is unattended.
 5. **Start it under PM2** (this is what replaces `screen`/`tmux` — the process keeps running after you log out):
    ```bash
    pm2 start ecosystem.config.js
@@ -209,6 +210,30 @@ pm2 stop dunning
 
 To check on it visually instead of the terminal, use the control panel over an SSH tunnel (see [Controlling it](#controlling-it) above).
 
+## Manual setup
+
+What `npm run setup` (`scripts/setup.sh`) does, step by step — useful if you're on a distro it doesn't handle, or just want to see exactly what's happening:
+
+1. **Install dependencies**: `npm install`.
+2. **Install PM2 globally**, if not already present: `npm install -g pm2` (falls back to `sudo` if that fails on permissions).
+3. **Install Chromium's runtime shared libraries** (Debian/Ubuntu only — Puppeteer needs these even headless):
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+     libxcomposite1 libxdamage1 libxrandr2 libgbm1 libasound2 \
+     libpangocairo-1.0-0 fonts-liberation libxss1 libappindicator3-1
+   ```
+   Package names shift slightly between Ubuntu versions (e.g. `libasound2` vs `libasound2t64` on 24.04) — if a specific one fails, search the current name for your release and install that instead.
+4. **On Linux ARM64 only**: install a system Chromium. Google's Chrome for Testing (what Puppeteer downloads by default) has no Linux ARM64 build at all — the download silently produces a broken install (folder exists, executable doesn't), no matter how many times you retry it. The `chromium` apt package is also unreliable across Ubuntu mirrors (it's often just missing, as opposed to a real package). Snap is what actually works:
+   ```bash
+   sudo apt-get install -y snapd   # if snap isn't already installed
+   sudo snap install chromium
+   ```
+   That lands at `/snap/bin/chromium`. **You don't need to configure anything else** — `src/whatsapp.js` auto-detects a system Chromium at the standard paths (`/snap/bin/chromium`, `/usr/bin/chromium`, `/usr/bin/chromium-browser`) whenever it's running on Linux ARM64 and no `PUPPETEER_EXECUTABLE_PATH` is set. Only set that env var yourself if your Chromium lives somewhere nonstandard.
+5. **Scaffold local config**: create an empty `config/local.json` (for `alertPhone`, gitignored) if one doesn't exist, and check whether a real profile exists in `profiles/` yet.
+
+None of this scans the QR or starts PM2 — those stay manual/interactive steps regardless (see [Deployment](#deployment) above).
+
 ## Logs
 
 `logs/YYYY-MM-DD.log` — one JSON object per line, covering daily send attempts (`sent`, `error`, `skipped-paused`, `skipped-future-date`, `skipped-not-ready`), client lifecycle events, every message the bot has seen (for debugging self-chat detection), and an audit trail of admin commands. Plain text, not rotated automatically; delete old ones periodically if desired:
@@ -223,13 +248,17 @@ find logs -mtime +90 -delete
 - **Session invalidated** (phone unlinked the device, or WhatsApp logged it out remotely): delete `.wwebjs_auth/` and repeat the interactive first-run login.
 - **Startup fails with `Could not load response body for this request`:** this is a known flaky issue in `whatsapp-web.js` against current Chrome/Puppeteer builds — it's unrelated to your setup. The process automatically retries a fresh browser up to 5 times with backoff before giving up; under PM2 it'll keep retrying across restarts. If you ever try to "fix" this by pinning a specific WhatsApp Web version, be aware that can get your session logged out server-side — don't do that; just let the retry logic handle it.
 - **Missing Chromium shared library on Ubuntu:** see step 3 of Deployment.
-- **`Could not find Chrome` / a downloaded Chrome folder exists but the executable inside it doesn't (on an ARM64 server):** Google's Chrome for Testing (what Puppeteer downloads by default) has no Linux ARM64 build — this isn't fixable by re-running the install, it genuinely doesn't exist for this architecture. Instead, use the system's own Chromium:
+- **`Could not find Chrome` / a downloaded Chrome folder exists but the executable inside it doesn't (on an ARM64 server):** Google's Chrome for Testing (what Puppeteer downloads by default) has no Linux ARM64 build — this isn't fixable by re-running the install, it genuinely doesn't exist for this architecture, and it'll keep failing every startup attempt (the retry logic can't help here, this isn't transient). `npm run setup` handles this automatically via snap, but if you're doing it by hand: the `chromium` apt package is unreliable on Ubuntu ARM mirrors (often just missing, not a real package) — use snap instead:
   ```bash
-  sudo apt-get install -y chromium
-  which chromium   # confirm it installed a real binary, not a snap stub
+  sudo snap install chromium
   ```
-  Then set `PUPPETEER_EXECUTABLE_PATH` to that path before running — either `export PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium` for an interactive `node index.js` run, or add it to the `env` block in `ecosystem.config.js` for PM2 (there's a commented example there already). Leave it unset entirely on normal x86_64 servers — Puppeteer's default download works fine there.
+  You don't need to set `PUPPETEER_EXECUTABLE_PATH` — it's auto-detected at `/snap/bin/chromium` (or `/usr/bin/chromium[-browser]`) whenever running on Linux ARM64. Only set the env var explicitly if your Chromium lives somewhere else. On normal x86_64 servers none of this applies — Puppeteer's default download works fine there.
 - **No QR code visible under PM2:** the first login must be done with `node index.js` run directly in a terminal, not under PM2.
+- **`npm install` itself fails** with `...exists but the executable...is missing` (as opposed to failing later at runtime): this means Puppeteer's browser cache (`~/.cache/puppeteer/`) has a corrupted/partial download in it, usually from a previous install that got interrupted (Ctrl+C mid-download, network drop, disk full). Fix by clearing the specific broken version folder it names and re-running `npm install` (or `npm run setup`):
+  ```bash
+  rm -rf ~/.cache/puppeteer/chrome*/<version-it-names>
+  npm install
+  ```
 - **Self-chat commands not triggering:** check the dashboard's event feed (or `logs/*.log`) for `message_seen` entries — they show exactly what WhatsApp delivered for every message, matched or not, which is the fastest way to see why a command didn't fire.
 
 ## Out of scope (for now)

@@ -38,7 +38,7 @@ async function attemptStartup(attempt) {
       scheduler.init(client);
       commands.registerListener(client);
       dashboard.start(client);
-      console.log('debt-reminder ready: profiles scheduled, admin commands listening on self-chat.');
+      console.log('dunning ready: profiles scheduled, admin commands listening on self-chat.');
       resolve();
     });
 
@@ -67,6 +67,16 @@ async function main() {
       // with a fresh browser/page usually succeeds within a couple of tries.
       if (attempt === MAX_STARTUP_ATTEMPTS) {
         console.error(`Giving up after ${MAX_STARTUP_ATTEMPTS} failed startup attempts.`);
+        if (/Could not find Chrome/i.test(err.message || '')) {
+          console.error(
+            '\nThis specific error usually means Puppeteer\'s bundled Chrome isn\'t ' +
+              'usable on this machine (common on Linux ARM64 servers, which have no ' +
+              'official Chrome for Testing build). Install a system Chromium — e.g. ' +
+              '`sudo snap install chromium` on Ubuntu — and either rely on the ' +
+              'automatic detection or set PUPPETEER_EXECUTABLE_PATH explicitly. ' +
+              'See the README\'s Troubleshooting section for the full steps.'
+          );
+        }
         process.exit(1);
       }
       const backoffMs = 2000 * attempt;

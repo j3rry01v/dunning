@@ -18,7 +18,7 @@ async function sendAlert(text) {
   if (!clientRef || !whatsapp.getIsReady()) return;
 
   try {
-    await clientRef.sendMessage(whatsapp.toChatId(alertPhone), `[debt-reminder alert]\n${text}`);
+    await clientRef.sendMessage(whatsapp.toChatId(alertPhone), `[dunning alert]\n${text}`);
   } catch (err) {
     logger.logEvent('alert_send_failed', { error: err.message });
   }
