@@ -44,7 +44,7 @@ To create your first real profile:
 cp profiles/_example.json profiles/<yourname>.json
 ```
 
-Then edit it — real values only need to exist somewhere the code reads from disk; the control panel doesn't create profiles, only manage existing ones (pause/resume/test-send).
+Then edit it — replace the `<COUNTRYCODE><NUMBER>` placeholder in `phone` with the real number (digits only, e.g. `91` followed by the 10-digit mobile). Real values only need to exist somewhere the code reads from disk; the control panel doesn't create profiles, only manage existing ones (pause/resume/test-send).
 
 Profile fields:
 
@@ -52,7 +52,7 @@ Profile fields:
 |---|---|
 | `id` | Slug, must match the filename (`profiles/<id>.json`) |
 | `displayName` | Human-readable name, for your own reference |
-| `phone` | Digits only, country code included, no `+` (e.g. `<COUNTRYCODE><NUMBER>`) |
+| `phone` | Digits only, country code included, no `+` — e.g. `91` + a 10-digit Indian mobile. The template ships with the placeholder `<COUNTRYCODE><NUMBER>`; replace it, or sends for that profile fail with an "Invalid phone" error |
 | `debtAmount` | Total amount owed |
 | `debtDateISO` | Debt start date, `YYYY-MM-DD` |
 | `cronSchedule` | Cron string, or `null` to use the global default (`config/default.json`) |

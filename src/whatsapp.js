@@ -67,6 +67,12 @@ function createClient() {
 }
 
 function toChatId(phone) {
+  // Refuse anything that isn't a plain E.164 digit string, so a profile
+  // copied from _example.json with its placeholder left in fails loudly
+  // instead of messaging some arbitrary number.
+  if (!/^\d{8,15}$/.test(String(phone))) {
+    throw new Error(`Invalid phone "${phone}": use digits only, country code included, no "+"`);
+  }
   return `${phone}@c.us`;
 }
 
